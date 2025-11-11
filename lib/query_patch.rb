@@ -12,9 +12,16 @@ module QueryPatch
         or_any_op = ""
         or_all_op = ""
 
-        #the AND filter start first
-        filters_clauses = and_clauses
+    # the AND filter starts first
+    filters_clauses = and_clauses
 
+    # small helper to safely join parts with an operator and always wrap in ()
+    join_group = lambda do |parts, op, fallback = " AND "|
+      parts = parts.reject(&:blank?)
+      return nil if parts.empty?
+      joined = parts.join(op.present? ? op : fallback)
+      "(#{joined})"
+    end
     filters.each_key do |field|
       next if field == "subproject_id"
 
@@ -91,28 +98,31 @@ module QueryPatch
     filters_clauses.reject!(&:blank?)
     and_clauses.reject!(&:blank?)
     and_statement = and_clauses.any? ? and_clauses.join(" AND ") : nil
-    all_and_statement = ["#{project_statement}", "#{and_statement}"].reject(&:blank?)
+
+    # Always keep the project_statement inside the base (AND) group
+    all_and_statement = [project_statement, and_statement].reject(&:blank?)
     all_and_statement = all_and_statement.any? ? all_and_statement.join(" AND ") : nil
+    all_and_statement = "(#{all_and_statement})" if all_and_statement.present?
 
-    # finish the traditional part. Now extended part
-    # add the and_any first
+    # Extended part
+    # 1) and_any  (OR between its items, then combined with base using AND/AND NOT)
     and_any_clauses.reject!(&:blank?)
-    and_any_statement = and_any_clauses.any? ? "("+ and_any_clauses.join(" OR ") +")" : nil
-    full_statement_ext_1 = ["#{all_and_statement}", "#{and_any_statement}"].reject(&:blank?)
-    full_statement_ext_1 = full_statement_ext_1.any? ? full_statement_ext_1.join(and_any_op) : nil
+    and_any_statement = and_any_clauses.any? ? "(" + and_any_clauses.join(" OR ") + ")" : nil
+    full_statement_ext_1 = [all_and_statement, and_any_statement]
+    full_statement_ext_1 = join_group.call(full_statement_ext_1.compact, and_any_op, " AND ")
 
-    # then add the or_all
+    # 2) or_all (AND between its items, then OR/OR NOT with the previous group)
     or_all_clauses.reject!(&:blank?)
-    or_all_statement = or_all_clauses.any? ? "("+ or_all_clauses.join(" AND ") +")" : nil
-    full_statement_ext_2 = ["#{full_statement_ext_1}", "#{or_all_statement}"].reject(&:blank?)
-    full_statement_ext_2 = full_statement_ext_2.any? ? full_statement_ext_2.join(or_all_op) : nil
+    or_all_statement = or_all_clauses.any? ? "(" + or_all_clauses.join(" AND ") + ")" : nil
+    full_statement_ext_2 = [full_statement_ext_1, or_all_statement]
+    full_statement_ext_2 = join_group.call(full_statement_ext_2.compact, or_all_op, " AND ")
 
-    # then add the or_any
+    # 3) or_any (OR between its items, then OR/OR NOT with the previous group)
     or_any_clauses.reject!(&:blank?)
-    or_any_statement = or_any_clauses.any? ? "("+ or_any_clauses.join(" OR ") +")" : nil
-    filters_clauses.any? ? filters_clauses.join(' AND ') : nil
-    full_statement = ["#{full_statement_ext_2}", "#{or_any_statement}"].reject(&:blank?)
-    full_statement = full_statement.any? ? full_statement.join(or_any_op) : nil
+    or_any_statement = or_any_clauses.any? ? "(" + or_any_clauses.join(" OR ") + ")" : nil
+    full_statement = [full_statement_ext_2, or_any_statement]
+    full_statement = join_group.call(full_statement.compact, or_any_op, " AND ")
+
     Rails.logger.info "STATEMENT #{full_statement}"
     return full_statement
   end
