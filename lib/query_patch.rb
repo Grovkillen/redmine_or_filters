@@ -4,24 +4,25 @@ module QueryPatch
     # filters clauses
     filters_clauses = []
 
-        and_clauses=[]
-        and_any_clauses=[]
-        or_any_clauses=[]
-        or_all_clauses=[]
-        and_any_op = ""
-        or_any_op = ""
-        or_all_op = ""
+	and_clauses=[]
+	and_any_clauses=[]
+	or_any_clauses=[]
+	or_all_clauses=[]
+	and_any_op = ""
+	or_any_op = ""
+	or_all_op = ""
 
-    # the AND filter starts first
-    filters_clauses = and_clauses
+	#the AND filter start first
+	filters_clauses = and_clauses
 
-    # small helper to safely join parts with an operator and always wrap in ()
+    # helper: join non-blank parts with op, wrap in ()
     join_group = lambda do |parts, op, fallback = " AND "|
       parts = parts.reject(&:blank?)
       return nil if parts.empty?
       joined = parts.join(op.present? ? op : fallback)
       "(#{joined})"
     end
+
     filters.each_key do |field|
       next if field == "subproject_id"
 
@@ -89,39 +90,40 @@ module QueryPatch
       filters_clauses << c.custom_field.visibility_by_project_condition
     end
 
-    #    filters_clauses << project_statement
-    # filters_clauses.reject!(&:blank?)
-
-    # filters_clauses.any? ? filters_clauses.join(' AND ') : nil
-
-    #now start build the full statement, project filter is allways AND
+    # Build base AND statement (WITHOUT project_statement here)
     filters_clauses.reject!(&:blank?)
     and_clauses.reject!(&:blank?)
     and_statement = and_clauses.any? ? and_clauses.join(" AND ") : nil
 
-    # Always keep the project_statement inside the base (AND) group
-    all_and_statement = [project_statement, and_statement].reject(&:blank?)
-    all_and_statement = all_and_statement.any? ? all_and_statement.join(" AND ") : nil
-    all_and_statement = "(#{all_and_statement})" if all_and_statement.present?
-
     # Extended part
-    # 1) and_any  (OR between its items, then combined with base using AND/AND NOT)
+    # 1) and_any (OR-join inom grupp, sedan kopplas med AND/AND NOT)
     and_any_clauses.reject!(&:blank?)
     and_any_statement = and_any_clauses.any? ? "(" + and_any_clauses.join(" OR ") + ")" : nil
-    full_statement_ext_1 = [all_and_statement, and_any_statement]
+    full_statement_ext_1 = [and_statement, and_any_statement]
     full_statement_ext_1 = join_group.call(full_statement_ext_1.compact, and_any_op, " AND ")
 
-    # 2) or_all (AND between its items, then OR/OR NOT with the previous group)
+    # 2) or_all (AND-join inom grupp, kopplas med OR/OR NOT)
     or_all_clauses.reject!(&:blank?)
     or_all_statement = or_all_clauses.any? ? "(" + or_all_clauses.join(" AND ") + ")" : nil
     full_statement_ext_2 = [full_statement_ext_1, or_all_statement]
     full_statement_ext_2 = join_group.call(full_statement_ext_2.compact, or_all_op, " AND ")
 
-    # 3) or_any (OR between its items, then OR/OR NOT with the previous group)
+    # 3) or_any (OR-join inom grupp, kopplas med OR/OR NOT)
     or_any_clauses.reject!(&:blank?)
     or_any_statement = or_any_clauses.any? ? "(" + or_any_clauses.join(" OR ") + ")" : nil
-    full_statement = [full_statement_ext_2, or_any_statement]
-    full_statement = join_group.call(full_statement.compact, or_any_op, " AND ")
+    core_statement = [full_statement_ext_2, or_any_statement]
+    core_statement = join_group.call(core_statement.compact, or_any_op, " AND ")
+
+    # FINAL: alltid AND:a in project_statement runt hela core_statement
+    if project_statement.present?
+      if core_statement.present?
+        full_statement = "#{project_statement} AND #{core_statement}"
+      else
+        full_statement = project_statement
+      end
+    else
+      full_statement = core_statement
+    end
 
     Rails.logger.info "STATEMENT #{full_statement}"
     return full_statement
