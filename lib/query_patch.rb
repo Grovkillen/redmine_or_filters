@@ -96,25 +96,25 @@ module QueryPatch
     and_statement = and_clauses.any? ? and_clauses.join(" AND ") : nil
 
     # Extended part
-    # 1) and_any (OR-join inom grupp, sedan kopplas med AND/AND NOT)
+    # 1) and_any (OR-join within group, attach to AND/AND NOT)
     and_any_clauses.reject!(&:blank?)
     and_any_statement = and_any_clauses.any? ? "(" + and_any_clauses.join(" OR ") + ")" : nil
     full_statement_ext_1 = [and_statement, and_any_statement]
     full_statement_ext_1 = join_group.call(full_statement_ext_1.compact, and_any_op, " AND ")
 
-    # 2) or_all (AND-join inom grupp, kopplas med OR/OR NOT)
+    # 2) or_all (AND-join within group, attach to OR/OR NOT)
     or_all_clauses.reject!(&:blank?)
     or_all_statement = or_all_clauses.any? ? "(" + or_all_clauses.join(" AND ") + ")" : nil
     full_statement_ext_2 = [full_statement_ext_1, or_all_statement]
     full_statement_ext_2 = join_group.call(full_statement_ext_2.compact, or_all_op, " AND ")
 
-    # 3) or_any (OR-join inom grupp, kopplas med OR/OR NOT)
+    # 3) or_any (OR-join within group, attach to OR/OR NOT)
     or_any_clauses.reject!(&:blank?)
     or_any_statement = or_any_clauses.any? ? "(" + or_any_clauses.join(" OR ") + ")" : nil
     core_statement = [full_statement_ext_2, or_any_statement]
     core_statement = join_group.call(core_statement.compact, or_any_op, " AND ")
 
-    # FINAL: alltid AND:a in project_statement runt hela core_statement
+    # FINAL: always add AND for project_statement enclosing core_statement
     if project_statement.present?
       if core_statement.present?
         full_statement = "#{project_statement} AND #{core_statement}"
