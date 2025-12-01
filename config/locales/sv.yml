@@ -3,5 +3,5 @@ sv:
   label_orfilter_and_any: "OCH någon av följande"
   label_orfilter_or_any: "Eller någon av följande"
   label_orfilter_or_all: "Eller alla följande"
-  label_match: "träff"
-  label_not_match: "ingen träff"
+  label_match: "matchar"
+  label_not_match: "inte matchar"
